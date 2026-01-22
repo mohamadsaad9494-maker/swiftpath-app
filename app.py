@@ -1,46 +1,81 @@
 import streamlit as st
 import pandas as pd
 import os
+from datetime import datetime
 
-# --- 🔐 Security ---
-ADMIN_PASSWORD = "SP-961-Admin#Global" 
+# --- الإعدادات والأمان ---
+ADMIN_PASSWORD = "SP-961-Admin#Global"
+DB_FILE = "logistics_orders.csv"
 
-st.set_page_config(page_title="SwiftPath Logistics", layout="wide", page_icon="🚚")
+st.set_page_config(page_title="SwiftPath Pro", layout="wide", page_icon="🚀")
 
-# --- 📂 Database Setup ---
-DB_FILE = "logistics_db.csv"
+# --- إدارة قاعدة البيانات ---
 if not os.path.exists(DB_FILE):
-    pd.DataFrame(columns=["Customer", "Phone", "Cash", "Status"]).to_csv(DB_FILE, index=False)
+    df = pd.DataFrame(columns=["ID", "Customer", "Phone", "Cash", "Status", "Timestamp"])
+    df.to_csv(DB_FILE, index=False)
 
-df = pd.read_csv(DB_FILE)
+def load_data():
+    return pd.read_csv(DB_FILE)
 
-# --- 🖥️ Interface ---
-st.title("🚚 SwiftPath Logistics Hub")
-st.info("CEO Smart Management System")
+def save_data(df):
+    df.to_csv(DB_FILE, index=False)
 
-tab1, tab2 = st.tabs(["📲 Driver Console", "🔐 Admin Hub"])
+# --- الواجهة الرئيسية ---
+st.title("🚚 SwiftPath Logistics Pro")
+tab1, tab2, tab3 = st.tabs(["📲 Driver Dashboard", "🔐 Admin Control", "📊 History"])
 
+df = load_data()
+
+# --- 1. لوحة السائق ---
 with tab1:
-    st.subheader("Pending Deliveries")
-    pending = df[df['Status'] == 'Pending']
-    if not pending.empty:
-        st.dataframe(pending, use_container_width=True)
+    st.subheader("Current Tasks")
+    pending_orders = df[df['Status'] == 'Pending']
+    
+    if pending_orders.empty:
+        st.success("No pending orders. Take a break! ☕")
     else:
-        st.success("Great job! All orders delivered.")
+        for index, row in pending_orders.iterrows():
+            with st.container():
+                col1, col2, col3 = st.columns([2, 2, 1])
+                col1.write(f"**Customer:** {row['Customer']}")
+                col2.write(f"**Cash:** ${row['Cash']}")
+                
+                # زر الاتصال وزر التسليم
+                if col3.button(f"✅ Delivered", key=f"del_{index}"):
+                    df.at[index, 'Status'] = 'Delivered'
+                    df.at[index, 'Timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    save_data(df)
+                    st.rerun()
+                
+                st.markdown(f"[📞 Call {row['Phone']}](tel:{row['Phone']})")
+                st.divider()
 
+# --- 2. لوحة المدير ---
 with tab2:
-    st.subheader("Control Center")
-    pwd = st.text_input("Enter Company Key", type="password")
+    pwd = st.text_input("Security Key", type="password")
     if pwd == ADMIN_PASSWORD:
-        st.success("Welcome back, CEO")
-        with st.form("new_order", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            name = col1.text_input("Customer Name")
-            phone = col2.text_input("Phone Number")
-            cash = st.number_input("Amount to Collect ($)", min_value=0.0)
-            if st.form_submit_button("Add to Fleet"):
-                new_data = pd.DataFrame([{"Customer": name, "Phone": phone, "Cash": cash, "Status": "Pending"}])
-                pd.concat([df, new_data], ignore_index=True).to_csv(DB_FILE, index=False)
+        st.success("Authorized Access")
+        with st.form("add_order", clear_on_submit=True):
+            c_name = st.text_input("Customer Name")
+            c_phone = st.text_input("Phone Number")
+            c_cash = st.number_input("Amount ($)", min_value=0.0)
+            if st.form_submit_button("Send to Driver"):
+                new_order = pd.DataFrame([{
+                    "ID": len(df) + 1,
+                    "Customer": c_name,
+                    "Phone": c_phone,
+                    "Cash": c_cash,
+                    "Status": "Pending",
+                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
+                }])
+                df = pd.concat([df, new_order], ignore_index=True)
+                save_data(df)
                 st.rerun()
     elif pwd != "":
-        st.error("Access Denied: Incorrect Security Key")
+        st.error("Invalid Key")
+
+# --- 3. سجل العمليات ---
+with tab3:
+    st.subheader("Completed Deliveries")
+    delivered_orders = df[df['Status'] == 'Delivered']
+    st.dataframe(delivered_orders, use_container_width=True)
